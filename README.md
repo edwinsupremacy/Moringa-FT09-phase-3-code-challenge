@@ -74,17 +74,17 @@ Write the following methods in the models(Article, Author, magazine) provided in
   - Should **not be able** to change after the author is instantiated.
   - _hint: hasattr()_
 
-#### Magazine
+  #### Magazine
 
-- `Magazine __init__(self, id, name, category)`
-  - A magazine is initialized with a name and a category
-  - This initialization should create a new entry in the database `magazines` table 
-- `Author property id`
-  - Returns the id of the newly created `Magazine`
-  - id must be of type `int`
-  - Remember to use the setter and getter method for easy retrieval, since this will be needed when creating `articles`
+  - `Magazine __init__(self, id, name, category)`
+    - A magazine is initialized with a name and a category
+    - This initialization should create a new entry in the database `magazines` table 
+  - `Author property id`
+    - Returns the id of the newly created `Magazine`
+    - id must be of type `int`
+    - Remember to use the setter and getter method for easy retrieval, since this will be needed when creating `articles`
 - `Magazine property name`
-  - Returns the magazine's name
+  - Returns the magazine's name 
   - The value of the name property should derive from the database `magazines`. You should makes use of getters and setters methods to manipulate this property.
   - Names must be of type `str`
   - Names must be between 2 and 16 characters, inclusive
