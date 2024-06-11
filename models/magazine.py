@@ -1,106 +1,140 @@
+from database.connection import get_db_connection
 from models.author import Author
 
 class Magazine:
-    def _init_(self,name = None, id = None,category = None,conn = None):
-        self._id = id
-        self._name = name
-        self._category = category
-        self.conn = conn
-        if conn:
-            self.cursor = self.conn.cursor()
-            self.add_to_database()
+    def __init__(self, id, name, category):
+        self.id = id
+        self.name = name
+        self.category = category
 
-
-    def _repr_(self):
+    def __repr__(self):
         return f'<Magazine {self.name}>'
     
-    def add_to_database(self):
+    def get_name(self):
+        return self._name
 
-        sql_check = "SELECT id FROM magazines WHERE name = ? "
-        result = self.cursor.execute(sql_check,(self.name,)).fetchone()
-        if result:
-            self.id = result[0]
-        else:
-            sql = "INSERT INTO magazines(name,category) VALUES (?,?)"
-            self.cursor.execute(sql,(self.name,self.category))
-            self.conn.commit()
-            self.id = self.cursor.lastrowid
+    def set_name(self, name):
+        if type(name) != str:
+            return 
+        if len(name) < 2 or len(name) > 16:
+            return  
+        self._name = name
+    
+    name = property(get_name, set_name)
+    
+    def get_category(self):
+        return self._category
+    
+    def set_category(self, category):
+        if type(category) != str:
+            return  
+        if len(category) == 0:
+            return 
+        self._category = category
 
-        
-
-    @property
-    def id(self):
+    category = property(get_category, set_category)
+    
+    def get_id(self):
         return self._id
     
-    @id.setter
-    def id(self,id):
-        if isinstance(id,int):
-            self._id = id
-        else:
-            raise TypeError("ID must be an integer")
+    def set_id(self, id):
+        if type(id) != int:
+            return  
+        self._id = id
+
+    id = property(get_id, set_id)
+
     
-    @property
-    def name(self):
-        if not hasattr(self,"_name"):
-            sql = "SELECT name FROM magazines WHERE id = ?"
-            row = self.cursor.execute(sql,(self.id,)).fetchone()
-            if row:
-                self._name = row[0]
-        return self._name
-    
-    @name.setter
-    def name(self,name):
-        if not (isinstance(name, str) and 2 <= len(name) <= 16):
-            raise ValueError("Name must be a string between 2 and 16 characters")
-        self._name = name
+    @classmethod
+    def create(cls, name, category):
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-    @property
-    def category(self):
-        if not hasattr(self,"_category"):
-            sql = "SELECT category FROM magazines WHERE id = ?"
-            row = self.cursor.execute(sql,(self.id,)).fetchone()
-            if row:
-                self._category=row[0]
-        return self._category
-            
-
-    @category.setter
-    def category(self,category):
-        if isinstance(category,str) and len(category)>0:
-            self._category = category
-        else:
-            raise ValueError("Category must be a non-empty string")
-
-    def articles(self):
-        from models.article import Article
-        sql = "SELECT * FROM articles WHERE articles.magazine_id = ?"
-        rows = self.cursor.execute(sql,(self.id,)).fetchall()
-        return [Article(id=row[0],title=row[1],content=row[2],author_id=row[3],magazine_id=row[4],conn=self.conn) for row in rows]
-    
-    def contributors(self):
-        from models.author import Author
-        sql = "SELECT DISTINCT authors.* FROM authors INNER JOIN articles ON authors.id = articles.author_id WHERE articles.magazine_id = ?"
-        rows = self.cursor.execute(sql,(self.id,)).fetchall()
-        return [Author(name=author[1],conn=self.conn) for author in rows]
-
+        cursor.execute('''
+            INSERT INTO magazines (name, category) VALUES (?, ?)
+        ''', (name, category))
+        
+        conn.commit()
+        magazine_id = cursor.lastrowid
+        conn.close()
+        
+        return cls(magazine_id, name, category)
 
     @classmethod
-    def get_all_magazines(cls,conn):
-        sql = "SELECT * FROM magazines"
+    def get_by_id(cls, magazine_id):
+        conn = get_db_connection()
         cursor = conn.cursor()
-        magazines = cursor.execute(sql).fetchall()
-        return [cls(id=row[0],name=row[1],category=row[2],conn=conn) for row in magazines]
+        
+        cursor.execute('''
+            SELECT id, name, category FROM magazines WHERE id = ?
+        ''', (magazine_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return cls(row['id'], row['name'], row['category'])
+        else:
+            return None
+        
+    def articles(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT articles.id, articles.title, articles.content, articles.author_id
+            FROM articles
+            WHERE articles.magazine_id = ?
+        ''', (self.id,))
+
+        articles_rows = cursor.fetchall()
+        conn.close()
+ 
+        return articles_rows
+    
+    def contributors(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()   
+        cursor.execute('''
+            SELECT authors.id, authors.name
+            FROM authors
+            INNER JOIN articles ON articles.author_id = authors.id
+            WHERE articles.magazine_id = ?
+        ''', (self.id,))
+        
+        contributors_rows = cursor.fetchall()
+        conn.close()
+
+        return contributors_rows
     
     def article_titles(self):
-        articles = self.articles()
-        return [item.title for item in articles] if articles else None
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT title FROM articles WHERE magazine_id = ?
+        ''', (self.id,))
+        
+        titles_rows = cursor.fetchall()
+        conn.close()
+        
+        if not titles_rows:
+            return None
+        
+        titles = [row['title'] for row in titles_rows]
+        return titles
     
     def contributing_authors(self):
-        moreThanTwo = {} 
-        contributors = self.contributors()
-        for author in contributors:
-            sql = "SELECT * FROM articles WHERE articles.author_id = ? and articles.magazine_id = ?"
-            rows = self.cursor.execute(sql, (author.id, self.id)).fetchall()
-            if len(rows) > 2:       
-                moreThanTwo[author.id] = author 
-        return list(moreThanTwo.values()) if moreThanTwo else None
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT authors.id, authors.name
+            FROM articles
+            INNER JOIN authors ON articles.author_id = authors.id
+            WHERE articles.magazine_id = ?
+            GROUP BY authors.id
+            HAVING COUNT(*) > 2
+        ''', (self.id,))
+        authors_rows = cursor.fetchall()
+        conn.close()
+        
+        return authors_rows

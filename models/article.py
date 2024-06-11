@@ -1,65 +1,71 @@
+from database.connection import get_db_connection
+
 class Article:
-    def _init_(self,id=None, title=None, content=None, author=None, magazine=None,conn = None,author_id=None,magazine_id=None):
-        self.id = id
+    def __init__(self, author, magazine, title, content):
+        self.author = author
+        self.magazine = magazine
         self.title = title
         self.content = content
-        self.author_id = author_id if author_id else author.id
-        self.magazine_id = magazine_id if magazine_id else magazine.id
-        self.conn = conn
+        self._insert_into_db()
 
-        if conn:
-            self.cursor = self.conn.cursor()
-            self.add_to_database()
-
-    def _repr_(self):
+    def __repr__(self):
         return f'<Article {self.title}>'
     
-
-    def add_to_database(self):
-        sql = "INSERT INTO articles (title,content,author_id,magazine_id) VALUES (?,?,?,?)"
-        self.cursor.execute(sql,(self.title,self.content,self.author_id,self.magazine_id))
-        self.conn.commit()
-        self.id = self.cursor.lastrowid
-
     @property
     def title(self):
-        if not hasattr(self,"_title"):
-            sql = "SELECT title FROM articles WHERE id = ?"
-            row = self.cursor.execute(sql,(self.id,)).fetchone()
-            if row:
-                self._title = row[0]
         return self._title
-        
+    
     @title.setter
-    def title(self,title):
-        if isinstance(title,str) and 5 <= len(title) <= 50 and not hasattr(self,"_title") :
-            self._title = title
-        else:
-            raise ValueError("Title must be a string between 5 and 50 characters long and can only be set once.")
-
-    def author(self):
-        from models.author import Author
-        sql = "SELECT authors.* FROM articles INNER JOIN authors ON articles.author_id = authors.id WHERE articles.id = ?"
-        row = self.cursor.execute(sql,(self.id,)).fetchone()
-        if row:
-            return Author(id=row[0], name=row[1], conn=self.conn)
-        else:
-            return None
+    def title(self, value):
+        if not isinstance(value, str):
+            raise ValueError("Title must be a string")
+        if not 5 <= len(value) <= 50:
+            raise ValueError("Title must be between 5 and 50 characters inclusive")
+        if hasattr(self, '_title'):
+            raise AttributeError("Title cannot be changed after the article is instantiated")
+        self._title = value
 
     
-    def magazine(self):
-        from models.magazine import Magazine
-        sql = "SELECT magazines.* FROM articles INNER JOIN magazines ON articles.magazine_id = magazines.id WHERE articles.id = ?"
-        row = self.cursor.execute(sql,(self.id,)).fetchone()
-        if row:
-            return Magazine(id=row[0],name=row[1],category=row[2],conn=self.conn)
-        else:
-            return None
-
-
-    @classmethod
-    def get_all_articles(cls,conn):
-        sql = "SELECT * FROM articles"
+    def _insert_into_db(self):
+        conn = get_db_connection()
         cursor = conn.cursor()
-        articles = cursor.execute(sql).fetchall()
-        return [cls(id=row[0],title=row[1],content=row[2],author_id=row[3],magazine_id=row[4],conn=conn) for row in articles]
+        
+        cursor.execute('''
+            INSERT INTO articles (title, content, author_id, magazine_id) VALUES (?, ?, ?, ?)
+        ''', (self.title, self.content, self.author.id, self.magazine.id))
+        
+        conn.commit()
+        conn.close()
+
+    def get_author(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT authors.name FROM articles 
+            INNER JOIN authors ON articles.author_id = authors.id 
+            WHERE articles.id = ?
+        ''', (self.id,))
+        
+        author_name = cursor.fetchone()[0]
+        conn.close()
+        return author_name
+
+    def get_magazine(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT magazines.name FROM articles 
+            INNER JOIN magazines ON articles.magazine_id = magazines.id 
+            WHERE articles.id = ?
+        ''', (self.id,))
+        
+        magazine_name = cursor.fetchone()[0]
+        conn.close()
+        return magazine_name
+
+    author_name = property(get_author)
+    magazine_name = property(get_magazine)
+
+    

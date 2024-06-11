@@ -1,82 +1,103 @@
+from database.connection import get_db_connection
+
 class Author:
-    def _init_(self,id=None, name=None, conn = None):
-        self.name = name
-        self.conn = conn
+    def __init__(self, id, name):
         self.id = id
-      
-        if conn:
-            self.cursor = conn.cursor()
-            self.add_author()
+        self.name = name
 
-    def _repr_(self):
+    def __repr__(self):
         return f'<Author {self.name}>'
-    
-    def _eq_(self, other):
-        if isinstance(other, Author):
-            return self.id == other.id and self.name == other.name
-        return False
-
-    def _hash_(self):
-        return hash((self.id, self.name))
-    
-    def add_author(self):
-        sql_check = "SELECT id FROM authors WHERE name = ? LIMIT 1"
-        result = self.cursor.execute(sql_check,(self.name,)).fetchone()
-        if result:
-            self._id = result[0]
-        else:
-            sql = "INSERT INTO authors(name) VALUES (?)"
-            self.cursor.execute(sql, (self.name,))
-            self.conn.commit()
-            self._id = self.cursor.lastrowid
     
     @property
     def id(self):
         return self._id
-    
+
     @id.setter
     def id(self, value):
-        if value is None:
-            self._id = 0  
-        elif isinstance(value, int):
-            self._id = value
-        else:
-            raise ValueError("Invalid ID value")
-
+        if not isinstance(value, int):
+            raise ValueError("id must be of int")
+        self._id = value
 
     @property
-    def name(self): 
-        if not hasattr(self,"_name"):
-            sql = "SELECT name FROM author WHERE id = ?"
-            self.cursor.execute(sql,(self.id,))
-            row = self.cursor.fetchone()
-            if row:
-                self._name = row[0]
+    def name(self):
         return self._name
-    
+
     @name.setter
-    def name(self,name):
-        if isinstance(name,str) and len(name) and not hasattr(self,"_name"):
-            self._name = name
-        
+    def name(self, value):
+        if type(value) == str:
+            if len(value) > 0:
+                if not hasattr(self, '_name'):
+                    self._name = value
+                else:
+                    print("Name cannot be changed after author is instantiated")
+            else:
+                print("Name must be longer than 0 characters")
         else:
-            raise ValueError("Invalid name value")
-        
-    def articles(self):
-        from models.article import Article
-        sql = "SELECT * FROM articles WHERE author_id = ?"
-        rows = self.cursor.execute(sql,(self.id,)).fetchall()
-        return [Article(id=row[0],title=row[1],content=row[2],author_id=row[3],magazine_id=row[4],conn=self.conn) for row in rows]
-    
-    def magazines(self):
-        from models.magazine import Magazine
-        sql = """SELECT DISTINCT magazines.id, magazines.name, magazines.category FROM magazines INNER JOIN articles ON articles.magazine_id = magazines.id WHERE articles.author_id = ?"""
-        rows = self.cursor.execute(sql,(self.id,)).fetchall()
-        return [Magazine(id=row[0],name=row[1],category=row[2],conn=self.conn) for row in rows]
+            print("Name must be string")
 
     @classmethod
-    def get_all_authors(cls,conn):
-        sql = "SELECT * FROM authors"
+    def create(cls, name):
+        conn = get_db_connection()
         cursor = conn.cursor()
-        authors = cursor.execute(sql).fetchall()
-        return [cls(name=author[1],conn=conn) for author in authors]
+        
+        cursor.execute('''
+            INSERT INTO authors (name) VALUES (?)
+        ''', (name,))
+        
+        conn.commit()
+        author_id = cursor.lastrowid
+        conn.close()
+        
+        return cls(author_id, name)
+
+    @classmethod
+    def get_by_id(cls, author_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name FROM authors WHERE id = ?
+        ''', (author_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return cls(row['id'], row['name'])
+        else:
+            return None
+        
+    def articles(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT articles.id, articles.title, articles.content
+            FROM articles 
+            INNER JOIN authors ON articles.author_id = authors.id 
+            WHERE authors.id = ?
+        ''', (self.id,))
+
+        articles_data = cursor.fetchall()
+        conn.close()
+
+        
+        return articles_data
+
+    def magazines(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT magazines.id, magazines.name, magazines.category
+            FROM magazines 
+            INNER JOIN articles ON magazines.id = articles.magazine_id 
+            INNER JOIN authors ON articles.author_id = authors.id 
+            WHERE authors.id = ?
+        ''', (self.id,))
+
+        magazines_data = cursor.fetchall()
+        conn.close()
+
+        
+        return magazines_data
